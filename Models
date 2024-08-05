@@ -1,0 +1,559 @@
+#Setup 
+
+!pip install keras
+!pip install tensorflow
+import numpy as np
+import keras
+import os
+from pathlib import Path
+import shutil
+import zipfile
+
+#Download the Data
+
+import os
+import zipfile
+
+# Get the current working directory
+current_directory = os.getcwd()
+
+# Specify the uploaded file name
+uploaded_file_name = "fra-eng.zip"
+
+# Specify the destination directory for extraction
+destination_directory = current_directory
+
+# Specify the file path
+zip_file_path = os.path.join(destination_directory, uploaded_file_name)
+
+# Check if the file exists
+if os.path.exists(zip_file_path):
+    # Extract the uploaded zip file to the destination directory
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        zip_ref.extractall(destination_directory)
+    print("Zip file extracted successfully.")
+else:
+    print("Error: ZIP file not found at", zip_file_path)
+
+#Configuration
+
+import os
+import zipfile
+
+uploaded_file_name = "fra-eng.zip"
+#destination_directory = "/content"
+destination_directory = "D:\Varsity\Honours\Semester 1\COMP703\COMP703 Assignment 3"  # Adjust this to your desired directory
+
+# Specify the file path
+zip_file_path = os.path.join(destination_directory, uploaded_file_name)
+
+# Check if the file exists
+if os.path.exists(zip_file_path):
+    # Extract the uploaded zip file to the destination directory
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        zip_ref.extractall(destination_directory)
+    print("Zip file extracted successfully.")
+else:
+    print("Error: ZIP file not found at", zip_file_path)
+
+# List contents of the '/content' directory after extraction
+contents = os.listdir(destination_directory)
+print(contents)
+
+# Now, you can access the extracted file
+data_path = os.path.join(destination_directory, "fra.txt")
+
+#Prepare the Data
+
+# Vectorize the data.
+from sklearn.model_selection import train_test_split
+
+# Read the data from file
+with open(data_path, "r", encoding="utf-8") as f:
+    lines = f.read().split("\n")
+
+# Define the number of samples to use
+num_samples = 10000
+
+# Split the data into training and test sets
+train_lines, test_lines = train_test_split(lines[:num_samples], test_size=0.2, random_state=42)
+
+# Initialize lists to store training and test input and target texts
+train_input_texts = []
+train_target_texts = []
+test_input_texts = []
+test_target_texts = []
+
+# Process training data
+for line in train_lines:
+    input_text, target_text, _ = line.split("\t")
+    target_text = "\t" + target_text + "\n"
+    train_input_texts.append(input_text)
+    train_target_texts.append(target_text)
+
+# Process test data
+for line in test_lines:
+    input_text, target_text, _ = line.split("\t")
+    target_text = "\t" + target_text + "\n"
+    test_input_texts.append(input_text)
+    test_target_texts.append(target_text)
+
+# Initialize input and target character sets
+input_characters = set()
+target_characters = set()
+
+# Update character sets with training data
+for input_text in train_input_texts:
+    for char in input_text:
+        input_characters.add(char)
+for target_text in train_target_texts:
+    for char in target_text:
+        target_characters.add(char)
+
+# Update character sets with test data
+for input_text in test_input_texts:
+    for char in input_text:
+        input_characters.add(char)
+for target_text in test_target_texts:
+    for char in target_text:
+        target_characters.add(char)
+
+# Sort and enumerate characters
+input_characters = sorted(list(input_characters))
+target_characters = sorted(list(target_characters))
+num_encoder_tokens = len(input_characters)
+num_decoder_tokens = len(target_characters)
+
+# Find max sequence lengths for inputs and targets
+max_encoder_seq_length = max([len(txt) for txt in train_input_texts + test_input_texts])
+max_decoder_seq_length = max([len(txt) for txt in train_target_texts + test_target_texts])
+
+print("Number of samples (training):", len(train_input_texts))
+print("Number of samples (testing):", len(test_input_texts))
+print("Number of unique input tokens:", num_encoder_tokens)
+print("Number of unique output tokens:", num_decoder_tokens)
+print("Max sequence length for inputs:", max_encoder_seq_length)
+print("Max sequence length for outputs:", max_decoder_seq_length)
+
+
+# Define token indices dictionaries for both input and target characters
+input_token_index = dict([(char, i) for i, char in enumerate(input_characters)])
+target_token_index = dict([(char, i) for i, char in enumerate(target_characters)])
+
+# Initialize arrays for encoder input, decoder input, and decoder target data for both training and test sets
+encoder_input_data_train = np.zeros(
+    (len(train_input_texts), max_encoder_seq_length, num_encoder_tokens),
+    dtype="float32",
+)
+decoder_input_data_train = np.zeros(
+    (len(train_input_texts), max_decoder_seq_length, num_decoder_tokens),
+    dtype="float32",
+)
+decoder_target_data_train = np.zeros(
+    (len(train_input_texts), max_decoder_seq_length, num_decoder_tokens),
+    dtype="float32",
+)
+
+encoder_input_data_test = np.zeros(
+    (len(test_input_texts), max_encoder_seq_length, num_encoder_tokens),
+    dtype="float32",
+)
+decoder_input_data_test = np.zeros(
+    (len(test_input_texts), max_decoder_seq_length, num_decoder_tokens),
+    dtype="float32",
+)
+decoder_target_data_test = np.zeros(
+    (len(test_input_texts), max_decoder_seq_length, num_decoder_tokens),
+    dtype="float32",
+)
+
+# Vectorize training data
+for i, (input_text, target_text) in enumerate(zip(train_input_texts, train_target_texts)):
+    for t, char in enumerate(input_text):
+        encoder_input_data_train[i, t, input_token_index[char]] = 1.0
+    encoder_input_data_train[i, t + 1 :, input_token_index[" "]] = 1.0
+    for t, char in enumerate(target_text):
+        decoder_input_data_train[i, t, target_token_index[char]] = 1.0
+        if t > 0:
+            decoder_target_data_train[i, t - 1, target_token_index[char]] = 1.0
+    decoder_input_data_train[i, t + 1 :, target_token_index[" "]] = 1.0
+    decoder_target_data_train[i, t:, target_token_index[" "]] = 1.0
+
+# Vectorize test data
+for i, (input_text, target_text) in enumerate(zip(test_input_texts, test_target_texts)):
+    for t, char in enumerate(input_text):
+        encoder_input_data_test[i, t, input_token_index[char]] = 1.0
+    encoder_input_data_test[i, t + 1 :, input_token_index[" "]] = 1.0
+    for t, char in enumerate(target_text):
+        decoder_input_data_test[i, t, target_token_index[char]] = 1.0
+        if t > 0:
+            decoder_target_data_test[i, t - 1, target_token_index[char]] = 1.0
+    decoder_input_data_test[i, t + 1 :, target_token_index[" "]] = 1.0
+    decoder_target_data_test[i, t:, target_token_index[" "]] = 1.0
+
+#Bidirectional LSTM encoder and an LSTM decoder
+#Build the Model
+
+import numpy as np
+import keras
+from keras.layers import LSTM, Bidirectional, Concatenate, Dense, LayerNormalization
+
+latent_dim = 256  # Latent dimensionality of the encoding space
+
+# Define encoder inputs for both training and testing
+encoder_inputs_train = keras.Input(shape=(None, num_encoder_tokens))
+encoder_inputs_test = keras.Input(shape=(None, num_encoder_tokens))
+
+# Define the bidirectional LSTM layer for both training and testing
+encoder_train = keras.layers.Bidirectional(keras.layers.LSTM(latent_dim, return_state=True))
+encoder_outputs_train, forward_h_train, forward_c_train, backward_h_train, backward_c_train = encoder_train(encoder_inputs_train)
+encoder_outputs_test, forward_h_test, forward_c_test, backward_h_test, backward_c_test = encoder_train(encoder_inputs_test)
+
+# We discard encoder_outputs and only keep the states.
+state_h_train = keras.layers.Concatenate()([forward_h_train, backward_h_train])
+state_c_train = keras.layers.Concatenate()([forward_c_train, backward_c_train])
+encoder_states_train = [state_h_train, state_c_train]
+
+state_h_test = keras.layers.Concatenate()([forward_h_test, backward_h_test])
+state_c_test = keras.layers.Concatenate()([forward_c_test, backward_c_test])
+encoder_states_test = [state_h_test, state_c_test]
+
+# Define decoder inputs for both training and testing
+decoder_inputs_train = keras.Input(shape=(None, num_decoder_tokens))
+decoder_inputs_test = keras.Input(shape=(None, num_decoder_tokens))
+
+# Define the LSTM layer for both training and testing
+decoder_lstm = keras.layers.LSTM(latent_dim * 2, return_sequences=True, return_state=True)
+
+# Run the decoder LSTM layer with encoder states for training and testing
+decoder_outputs_train, _, _ = decoder_lstm(decoder_inputs_train, initial_state=encoder_states_train)
+decoder_outputs_test, _, _ = decoder_lstm(decoder_inputs_test, initial_state=encoder_states_test)
+
+# Apply layer normalization to the decoder outputs for both training and testing
+decoder_outputs_train = LayerNormalization()(decoder_outputs_train)
+decoder_outputs_test = LayerNormalization()(decoder_outputs_test)
+
+# Apply dense layer to the decoder outputs for both training and testing
+decoder_dense = keras.layers.Dense(num_decoder_tokens, activation="softmax")
+decoder_outputs_train = decoder_dense(decoder_outputs_train)
+decoder_outputs_test = decoder_dense(decoder_outputs_test)
+
+# Define the model for training
+model_train = keras.Model([encoder_inputs_train, decoder_inputs_train], decoder_outputs_train)
+
+# Define the model for testing
+model_test = keras.Model([encoder_inputs_test, decoder_inputs_test], decoder_outputs_test)
+
+#Train the Model
+
+import numpy as np
+import tensorflow as tf
+from numba import jit
+from nltk.translate.bleu_score import corpus_bleu
+
+# Assuming you have defined the models `model_train` and `model_test`
+
+#@jit
+# Define the custom loss function
+def custom_loss(y_true, y_pred):
+    # Compute categorical crossentropy loss
+    loss = tf.keras.losses.categorical_crossentropy(y_true, y_pred)
+    return loss
+
+# Compile the training model with the custom loss function
+model_train.compile(optimizer="rmsprop", loss=custom_loss, metrics=["accuracy"])
+print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
+
+
+# Train the model
+history = model_train.fit(
+    [encoder_input_data_train, decoder_input_data_train],
+    decoder_target_data_train,
+    batch_size=64,
+    epochs=100,
+    validation_split=0.2,
+)
+
+# Save the trained model
+model_train.save("s2s_model_train.keras")
+
+# Create test data for the encoder input
+encoder_input_data_test = np.zeros(
+    (len(test_input_texts), max_encoder_seq_length, num_encoder_tokens),
+    dtype="float32",
+)
+for i, (input_text, target_text) in enumerate(zip(test_input_texts,test_target_texts)):
+    for t, char in enumerate(input_text):
+        encoder_input_data_test[i, t, input_token_index[char]] = 1.0
+    encoder_input_data_test[i, t + 1 :, input_token_index[" "]] = 1.0
+
+# Generate predictions using the testing model
+predicted_sequences = model_test.predict([encoder_input_data_test, decoder_input_data_test])
+
+# Function to decode sequences from one-hot encoding to text
+def decode_sequence(input_seq, reverse_target_char_index):
+    decoded_sentence = ""
+    for vector in input_seq:
+        index = np.argmax(vector)
+        char = reverse_target_char_index[index]
+        decoded_sentence += char
+    return decoded_sentence
+
+# Define the reverse dictionary mapping indices back to characters
+reverse_target_char_index = dict((i, char) for char, i in target_token_index.items())
+
+# Convert predicted sequences and target sequences to text
+references = []
+hypotheses = []
+for i in range(len(predicted_sequences)):
+    predicted_sentence = decode_sequence(predicted_sequences[i], reverse_target_char_index)
+    target_sentence = decode_sequence(decoder_target_data_test[i], reverse_target_char_index)
+    references.append([target_sentence.split()])
+    hypotheses.append(predicted_sentence.split())
+
+# Compute BLEU score
+bleu_score = corpus_bleu(references, hypotheses, weights=(0.25, 0.25, 0.25, 0.25))
+print("BLEU Score (4-gram):", bleu_score)
+
+#Bidirectional GRU encoder and a GRU decoder
+#Build the Model
+
+import numpy as np
+import keras
+from keras.layers import GRU, Bidirectional, Concatenate, Dense, LayerNormalization
+
+latent_dim = 256  # Latent dimensionality of the encoding space
+
+# Define encoder inputs for both training and testing
+encoder_inputs_train = keras.Input(shape=(None, num_encoder_tokens))
+encoder_inputs_test = keras.Input(shape=(None, num_encoder_tokens))
+
+# Define the bidirectional GRU layer for both training and testing
+encoder_train = keras.layers.Bidirectional(keras.layers.GRU(latent_dim, return_state=True))
+encoder_outputs_train, forward_h_train, backward_h_train = encoder_train(encoder_inputs_train)
+encoder_states_train = Concatenate()([forward_h_train, backward_h_train])
+
+encoder_test = keras.layers.Bidirectional(keras.layers.GRU(latent_dim, return_state=True))
+encoder_outputs_test, forward_h_test, backward_h_test = encoder_test(encoder_inputs_test)
+encoder_states_test = Concatenate()([forward_h_test, backward_h_test])
+
+# Define decoder inputs for both training and testing
+decoder_inputs_train = keras.Input(shape=(None, num_decoder_tokens))
+decoder_inputs_test = keras.Input(shape=(None, num_decoder_tokens))
+
+# Define the GRU layer for both training and testing
+decoder_gru = keras.layers.GRU(latent_dim * 2, return_sequences=True, return_state=True)
+
+# Run the decoder GRU layer with encoder states for training and testing
+decoder_outputs_train, _ = decoder_gru(decoder_inputs_train, initial_state=encoder_states_train)
+decoder_outputs_test, _ = decoder_gru(decoder_inputs_test, initial_state=encoder_states_test)
+
+# Apply layer normalization to the decoder outputs for both training and testing
+decoder_outputs_train = LayerNormalization()(decoder_outputs_train)
+decoder_outputs_test = LayerNormalization()(decoder_outputs_test)
+
+# Apply dense layer to the decoder outputs for both training and testing
+decoder_dense = keras.layers.Dense(num_decoder_tokens, activation="softmax")
+decoder_outputs_train = decoder_dense(decoder_outputs_train)
+decoder_outputs_test = decoder_dense(decoder_outputs_test)
+
+# Define the model for training
+model_train = keras.Model([encoder_inputs_train, decoder_inputs_train], decoder_outputs_train)
+
+# Define the model for testing
+model_test = keras.Model([encoder_inputs_test, decoder_inputs_test], decoder_outputs_test)
+
+#Train the Model
+
+import numpy as np
+import tensorflow as tf
+from numba import jit
+from nltk.translate.bleu_score import corpus_bleu
+
+# Assuming you have defined the models `model_train` and `model_test`
+
+#@jit
+# Define the custom loss function
+def custom_loss(y_true, y_pred):
+    # Compute categorical crossentropy loss
+    loss = tf.keras.losses.categorical_crossentropy(y_true, y_pred)
+    return loss
+
+# Compile the training model with the custom loss function
+model_train.compile(optimizer="rmsprop", loss=custom_loss, metrics=["accuracy"])
+print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
+
+
+# Train the model
+history = model_train.fit(
+    [encoder_input_data_train, decoder_input_data_train],
+    decoder_target_data_train,
+    batch_size=64,
+    epochs=100,
+    validation_split=0.2,
+)
+
+# Save the trained model
+model_train.save("s2s_model_train.keras")
+
+# Create test data for the encoder input
+encoder_input_data_test = np.zeros(
+    (len(test_input_texts), max_encoder_seq_length, num_encoder_tokens),
+    dtype="float32",
+)
+for i, (input_text, target_text) in enumerate(zip(test_input_texts,test_target_texts)):
+    for t, char in enumerate(input_text):
+        encoder_input_data_test[i, t, input_token_index[char]] = 1.0
+    encoder_input_data_test[i, t + 1 :, input_token_index[" "]] = 1.0
+
+# Generate predictions using the testing model
+predicted_sequences = model_test.predict([encoder_input_data_test, decoder_input_data_test])
+
+# Function to decode sequences from one-hot encoding to text
+def decode_sequence(input_seq, reverse_target_char_index):
+    decoded_sentence = ""
+    for vector in input_seq:
+        index = np.argmax(vector)
+        char = reverse_target_char_index[index]
+        decoded_sentence += char
+    return decoded_sentence
+
+# Define the reverse dictionary mapping indices back to characters
+reverse_target_char_index = dict((i, char) for char, i in target_token_index.items())
+
+# Convert predicted sequences and target sequences to text
+references = []
+hypotheses = []
+for i in range(len(predicted_sequences)):
+    predicted_sentence = decode_sequence(predicted_sequences[i], reverse_target_char_index)
+    target_sentence = decode_sequence(decoder_target_data_test[i], reverse_target_char_index)
+    references.append([target_sentence.split()])
+    hypotheses.append(predicted_sentence.split())
+
+# Compute BLEU score
+bleu_score = corpus_bleu(references, hypotheses, weights=(0.25, 0.25, 0.25, 0.25))
+print("BLEU Score (4-gram):", bleu_score)
+
+#2 layered GRU encoder and an GRU decoder
+#Build the Model
+
+import numpy as np
+import keras
+from keras.layers import GRU, Concatenate, Dense, LayerNormalization
+
+latent_dim = 256  # Latent dimensionality of the encoding space
+
+# Define encoder inputs for both training and testing
+encoder_inputs_train = keras.Input(shape=(None, num_encoder_tokens))
+encoder_inputs_test = keras.Input(shape=(None, num_encoder_tokens))
+
+# Define the first GRU layer for both training and testing
+encoder_gru1 = keras.layers.GRU(latent_dim, return_sequences=True, return_state=True)
+encoder_outputs_train1, encoder_states_train1 = encoder_gru1(encoder_inputs_train)
+encoder_outputs_test1, encoder_states_test1 = encoder_gru1(encoder_inputs_test)
+
+# Define the second GRU layer for both training and testing
+encoder_gru2 = keras.layers.GRU(latent_dim, return_sequences=False, return_state=True)
+encoder_outputs_train2, encoder_states_train2 = encoder_gru2(encoder_outputs_train1)
+encoder_outputs_test2, encoder_states_test2 = encoder_gru2(encoder_outputs_test1)
+
+# Concatenate the states of the two GRU layers for both training and testing
+encoder_states_train = Concatenate()([encoder_states_train1, encoder_states_train2])
+encoder_states_test = Concatenate()([encoder_states_test1, encoder_states_test2])
+
+# Define decoder inputs for both training and testing
+decoder_inputs_train = keras.Input(shape=(None, num_decoder_tokens))
+decoder_inputs_test = keras.Input(shape=(None, num_decoder_tokens))
+
+# Define the GRU layer for both training and testing
+decoder_gru = keras.layers.GRU(latent_dim * 2, return_sequences=True, return_state=True)
+
+# Run the decoder GRU layer with encoder states for training and testing
+decoder_outputs_train, _ = decoder_gru(decoder_inputs_train, initial_state=encoder_states_train)
+decoder_outputs_test, _ = decoder_gru(decoder_inputs_test, initial_state=encoder_states_test)
+
+# Apply layer normalization to the decoder outputs for both training and testing
+decoder_outputs_train = LayerNormalization()(decoder_outputs_train)
+decoder_outputs_test = LayerNormalization()(decoder_outputs_test)
+
+# Apply dense layer to the decoder outputs for both training and testing
+decoder_dense = keras.layers.Dense(num_decoder_tokens, activation="softmax")
+decoder_outputs_train = decoder_dense(decoder_outputs_train)
+decoder_outputs_test = decoder_dense(decoder_outputs_test)
+
+# Define the model for training
+model_train = keras.Model([encoder_inputs_train, decoder_inputs_train], decoder_outputs_train)
+
+# Define the model for testing
+model_test = keras.Model([encoder_inputs_test, decoder_inputs_test], decoder_outputs_test)
+
+#Train the Model
+
+import numpy as np
+import tensorflow as tf
+from numba import jit
+from nltk.translate.bleu_score import corpus_bleu
+
+# Assuming you have defined the models `model_train` and `model_test`
+
+#@jit
+# Define the custom loss function
+def custom_loss(y_true, y_pred):
+    # Compute categorical crossentropy loss
+    loss = tf.keras.losses.categorical_crossentropy(y_true, y_pred)
+    return loss
+
+# Compile the training model with the custom loss function
+model_train.compile(optimizer="rmsprop", loss=custom_loss, metrics=["accuracy"])
+print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
+
+
+# Train the model
+history = model_train.fit(
+    [encoder_input_data_train, decoder_input_data_train],
+    decoder_target_data_train,
+    batch_size=64,
+    epochs=100,
+    validation_split=0.2,
+)
+
+# Save the trained model
+model_train.save("s2s_model_train.keras")
+
+# Create test data for the encoder input
+encoder_input_data_test = np.zeros(
+    (len(test_input_texts), max_encoder_seq_length, num_encoder_tokens),
+    dtype="float32",
+)
+for i, (input_text, target_text) in enumerate(zip(test_input_texts,test_target_texts)):
+    for t, char in enumerate(input_text):
+        encoder_input_data_test[i, t, input_token_index[char]] = 1.0
+    encoder_input_data_test[i, t + 1 :, input_token_index[" "]] = 1.0
+
+# Generate predictions using the testing model
+predicted_sequences = model_test.predict([encoder_input_data_test, decoder_input_data_test])
+
+# Function to decode sequences from one-hot encoding to text
+def decode_sequence(input_seq, reverse_target_char_index):
+    decoded_sentence = ""
+    for vector in input_seq:
+        index = np.argmax(vector)
+        char = reverse_target_char_index[index]
+        decoded_sentence += char
+    return decoded_sentence
+
+# Define the reverse dictionary mapping indices back to characters
+reverse_target_char_index = dict((i, char) for char, i in target_token_index.items())
+
+# Convert predicted sequences and target sequences to text
+references = []
+hypotheses = []
+for i in range(len(predicted_sequences)):
+    predicted_sentence = decode_sequence(predicted_sequences[i], reverse_target_char_index)
+    target_sentence = decode_sequence(decoder_target_data_test[i], reverse_target_char_index)
+    references.append([target_sentence.split()])
+    hypotheses.append(predicted_sentence.split())
+
+# Compute BLEU score
+bleu_score = corpus_bleu(references, hypotheses, weights=(0.25, 0.25, 0.25, 0.25))
+print("BLEU Score (4-gram):", bleu_score)
